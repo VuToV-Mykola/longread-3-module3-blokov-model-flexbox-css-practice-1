@@ -1,0 +1,213 @@
+name: Screenshot & Visitor/Likes System
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      add_like:
+        description: 'Add your like (only one per user allowed)'
+        required: false
+        default: true
+        type: boolean
+      screenshot_selector:
+        description: 'CSS selector for screenshot'
+        required: false
+        default: 'body'
+        type: string
+
+env:
+  SCREENSHOT_WIDTH: '1920'
+  SCREENSHOT_HEIGHT: '1080'
+  BADGE_STYLE: 'for-the-badge'
+  BADGE_COLOR: 'brightgreen'
+  LIKES_COLOR: 'red'
+  DATA_DIR: 'db'
+
+jobs:
+  update-readme-and-visitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable jq libgbm-dev
+
+      - name: Install Node.js dependencies
+        run: |
+          mkdir -p $DATA_DIR
+          echo '{"dependencies": {"puppeteer": "^24.9.0", "canvas": "^2.11.2"}}' > package.json
+          npm install
+
+      - name: Create screenshot script if not exists
+        run: |
+          if [ ! -f "generate-screenshot.js" ] && [ ! -f "scripts/generate-screenshot.js" ]; then
+            mkdir -p scripts
+            cat > scripts/generate-screenshot.js << 'EOF'
+          const puppeteer = require('puppeteer');
+          const fs = require('fs');
+          const path = require('path');
+
+          async function takeScreenshot() {
+            const browser = await puppeteer.launch({
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+              executablePath: '/usr/bin/google-chrome'
+            });
+            
+            const page = await browser.newPage();
+            
+            const githubPages = `https://${process.env.GITHUB_REPOSITORY_OWNER}.github.io/${process.env.GITHUB_REPOSITORY_NAME}/`;
+            const indexPath = path.join(process.cwd(), 'index.html');
+            
+            let targetUrl;
+            if (fs.existsSync(indexPath)) {
+              targetUrl = `file://${indexPath}`;
+            } else {
+              targetUrl = githubPages;
+              console.log(`📡 Using GitHub Pages URL: ${targetUrl}`);
+            }
+            
+            try {
+              await page.setViewport({
+                width: parseInt(process.env.SCREENSHOT_WIDTH) || 1920,
+                height: parseInt(process.env.SCREENSHOT_HEIGHT) || 1080
+              });
+              
+              await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+              
+              const selector = process.env.SCREENSHOT_SELECTOR || 'body';
+              await page.waitForSelector(selector, { timeout: 10000 });
+              
+              await page.screenshot({
+                path: 'screenshot.png',
+                fullPage: true,
+                type: 'png'
+              });
+              
+              console.log('✅ Screenshot created successfully');
+            } catch (error) {
+              console.error('❌ Screenshot failed:', error.message);
+              // Create fallback
+              const canvas = require('canvas').createCanvas(800, 600);
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#f0f0f0';
+              ctx.fillRect(0, 0, 800, 600);
+              ctx.fillStyle = '#333';
+              ctx.font = '24px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText('Screenshot not available', 400, 300);
+              
+              const buffer = canvas.toBuffer('image/png');
+              fs.writeFileSync('screenshot.png', buffer);
+            }
+            
+            await browser.close();
+          }
+
+          takeScreenshot().catch(console.error);
+          EOF
+          fi
+
+      - name: Generate screenshot
+        run: |
+          if [ -f "package.json" ] && npm run | grep -q "screenshot"; then
+            npm run screenshot
+          else
+            node scripts/generate-screenshot.js
+          fi
+        env:
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+          SCREENSHOT_SELECTOR: ${{ github.event.inputs.screenshot_selector }}
+      - name: Manage stats (likes and visitors)
+        run: |
+          mkdir -p $DATA_DIR
+          STATS_FILE="$DATA_DIR/stats-data.json"
+
+          # Ініціалізуємо файл, якщо немає
+          if [ ! -f "$STATS_FILE" ]; then
+            echo '{"likes": {"total": 0, "users": []}, "visitors": 0}' > "$STATS_FILE"
+          fi
+
+          # Обробка лайків
+          if [ "${{ github.event.inputs.add_like }}" = "true" ]; then
+            USER="${{ github.actor }}"
+            ALREADY_LIKED=$(jq --arg user "$USER" '.likes.users | index($user) != null' "$STATS_FILE")
+            
+            if [ "$ALREADY_LIKED" = "true" ]; then
+              echo "ℹ️ $USER already liked"
+            else
+              jq --arg user "$USER" \
+                '.likes.total += 1 | .likes.users += [$user]' \
+                "$STATS_FILE" > tmp.json && mv tmp.json "$STATS_FILE"
+              echo "💖 New like from $USER!"
+            fi
+          fi
+
+          # Обробка відвідувачів
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.actor }}" != "github-actions[bot]" ]; then
+            jq '.visitors += 1' "$STATS_FILE" > tmp.json && mv tmp.json "$STATS_FILE"
+          fi
+
+          # Генерація бейджів
+          TOTAL_LIKES=$(jq -r '.likes.total' "$STATS_FILE")
+          echo "{\"schemaVersion\":1,\"label\":\"❤️ likes\",\"message\":\"$TOTAL_LIKES\",\"color\":\"$LIKES_COLOR\",\"style\":\"$BADGE_STYLE\"}" > $DATA_DIR/likes-badge.json
+
+          TOTAL_VISITORS=$(jq -r '.visitors' "$STATS_FILE")
+          echo "{\"schemaVersion\":1,\"label\":\"👀 views\",\"message\":\"$TOTAL_VISITORS\",\"color\":\"$BADGE_COLOR\",\"style\":\"$BADGE_STYLE\"}" > $DATA_DIR/visitors-badge.json
+
+      - name: Update README
+        run: |
+          # Визначаємо URL для бейджів
+          REPO_URL="https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_REF_NAME"
+
+          # Визначаємо ім'я файлу workflow
+          WORKFLOW_REF="${{ github.workflow_ref }}"
+          WORKFLOW_FILE="${WORKFLOW_REF##*/workflows/}"
+          WORKFLOW_FILE="${WORKFLOW_FILE%@*}"
+
+          # Створюємо авто-генерований блок
+          AUTOGEN_BLOCK="<!-- AUTOGEN:STATS -->\n"
+          AUTOGEN_BLOCK+="[![👀 Views](https://img.shields.io/endpoint?url=$REPO_URL/$DATA_DIR/visitors-badge.json)](https://github.com/${{ github.repository }}/graphs/traffic)\n"
+          AUTOGEN_BLOCK+="[![❤️ Likes](https://img.shields.io/badge/dynamic/json?url=$REPO_URL/$DATA_DIR/likes-badge.json&query=%24.message&label=%F0%9F%92%96%20Likes&style=$BADGE_STYLE&color=$LIKES_COLOR)](https://github.com/${{ github.repository }}/actions/workflows/$WORKFLOW_FILE)\n\n"
+          AUTOGEN_BLOCK+="## 📸 Latest Screenshot\n![Project Screenshot](screenshot.png)\n"
+          AUTOGEN_BLOCK+="<!-- END:AUTOGEN -->"
+
+          if [ -f "README.md" ]; then
+            # Обробляємо README.md
+            if grep -q "<!-- AUTOGEN:STATS -->" README.md; then
+              # Замінюємо старий блок новим
+              awk -v new_block="$AUTOGEN_BLOCK" \
+                'BEGIN{RS="<!-- END:AUTOGEN -->";FS=""} {if (NR==1) {print new_block} else {print}}' \
+                README.md > README.tmp
+            else
+              # Додаємо новий блок на початок README
+              echo -e "$AUTOGEN_BLOCK\n\n$(cat README.md)" > README.tmp
+            fi
+            mv README.tmp README.md
+          else
+            # Створюємо новий README з блоком
+            echo -e "$AUTOGEN_BLOCK" > README.md
+          fi
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add .
+          git commit -m "📊 Auto-update stats and screenshot" || exit 0
+          git push
