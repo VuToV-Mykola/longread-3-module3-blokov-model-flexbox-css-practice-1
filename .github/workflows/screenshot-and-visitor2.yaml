@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, master]
   schedule:
-    - cron: '0 */2 * * *' # Кожні 2 години
+    - cron: '0 */2 * * *'
   workflow_dispatch:
     inputs:
       add_like:
@@ -54,68 +54,15 @@ jobs:
 
       - name: Install Node.js dependencies
         run: |
-          if [ -f "package.json" ]; then
-            npm ci
-          else
-            echo '{"name": "screenshot-generator", "version": "1.0.0", "dependencies": {"puppeteer": "^21.0.0"}}' > package.json
-            npm install
-          fi
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: true
+          # Always create fresh package.json to ensure puppeteer is included
+          echo '{"name": "screenshot-generator", "version": "1.0.0", "dependencies": {"puppeteer": "^21.0.0", "canvas": "^2.11.2"}}' > package.json
+          npm install
+          npm list puppeteer  # Verify installation
 
-      - name: Manage likes system
+      - name: Create screenshot script
         run: |
-          # Initialize or load likes data
-          if [ ! -f "likes-data.json" ]; then
-            echo '{"total_likes":0,"unique_users":[],"created_at":"","last_updated":""}' > likes-data.json
-          fi
-
-          CURRENT_LIKES=$(jq -r '.total_likes' likes-data.json)
-          CURRENT_USERS=$(jq -r '.unique_users[]' likes-data.json)
-
-          # Handle like request
-          if [ "${{ github.event.inputs.add_like }}" = "true" ]; then
-            USER="${{ github.actor }}"
-            if echo "$CURRENT_USERS" | grep -q "$USER"; then
-              echo "LIKE_STATUS=already_liked" >> $GITHUB_ENV
-              echo "⚠️ $USER already liked this project!"
-            else
-              jq --arg user "$USER" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                '.total_likes += 1 | .unique_users += [$user] | .last_updated = $date | if .created_at == "" then .created_at = $date else . end' \
-                likes-data.json > tmp.json && mv tmp.json likes-data.json
-              echo "LIKE_STATUS=added" >> $GITHUB_ENV
-              echo "💖 New like from $USER!"
-            fi
-          fi
-
-          # Update likes badge
-          CURRENT_LIKES=$(jq -r '.total_likes' likes-data.json)
-          echo "{\"schemaVersion\":1,\"label\":\"❤️ likes\",\"message\":\"$CURRENT_LIKES\",\"color\":\"$LIKES_COLOR\",\"style\":\"$BADGE_STYLE\"}" > likes-count.json
-
-      - name: Update visitor count
-        run: |
-          # Initialize or load visitor data
-          if [ ! -f "visitor-data.json" ]; then
-            echo '{"unique_visitors":1,"last_updated":"","fallback_mode":true}' > visitor-data.json
-          fi
-
-          # Increment if manual run by user
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.actor }}" != "github-actions[bot]" ]; then
-            CURRENT=$(jq -r '.unique_visitors' visitor-data.json)
-            NEW=$((CURRENT + 1))
-            jq --arg count "$NEW" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              '.unique_visitors = ($count | tonumber) | .last_updated = $date' \
-              visitor-data.json > tmp.json && mv tmp.json visitor-data.json
-          fi
-
-          CURRENT_VISITORS=$(jq -r '.unique_visitors' visitor-data.json)
-          echo "{\"schemaVersion\":1,\"label\":\"👀 views\",\"message\":\"$CURRENT_VISITORS\",\"color\":\"$BADGE_COLOR\",\"style\":\"$BADGE_STYLE\"}" > visitor-count.json
-
-      - name: Create screenshot script if not exists
-        run: |
-          if [ ! -f "screenshot.js" ] && [ ! -f "scripts/screenshot.js" ]; then
-            mkdir -p scripts
-            cat > scripts/screenshot.js << 'EOF'
+          mkdir -p scripts
+          cat > scripts/screenshot.js << 'EOF'
           const puppeteer = require('puppeteer');
           const fs = require('fs');
           const path = require('path');
@@ -159,7 +106,7 @@ jobs:
               console.log('✅ Screenshot created successfully');
             } catch (error) {
               console.error('❌ Screenshot failed:', error.message);
-              // Create fallback
+              
               const canvas = require('canvas').createCanvas(800, 600);
               const ctx = canvas.getContext('2d');
               ctx.fillStyle = '#f0f0f0';
@@ -178,15 +125,9 @@ jobs:
 
           takeScreenshot().catch(console.error);
           EOF
-          fi
 
       - name: Generate screenshot
-        run: |
-          if [ -f "package.json" ] && npm run | grep -q "screenshot"; then
-            npm run screenshot
-          else
-            node scripts/screenshot.js
-          fi
+        run: node scripts/screenshot.js
         env:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
