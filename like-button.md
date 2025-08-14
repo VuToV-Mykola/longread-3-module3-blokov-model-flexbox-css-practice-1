@@ -1,0 +1,1 @@
+[![❤️ Like this project?](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/VuToV-Mykola/goit-markup-hw-02/main/likes-count.json&query=%24.message&label=%F0%9F%92%96%20Likes&style=for-the-badge&color=red)](https://github.com/VuToV-Mykola/goit-markup-hw-02/actions/workflows/screenshot-and-visitor.yaml)

@@ -1,0 +1,287 @@
+name: Screenshot & Visitor/Likes System
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 */2 * * *' # Кожні 2 години
+  workflow_dispatch:
+    inputs:
+      add_like:
+        description: 'Add your like (only one per user allowed)'
+        required: false
+        default: true
+        type: boolean
+      screenshot_selector:
+        description: 'CSS selector for screenshot'
+        required: false
+        default: 'body'
+        type: string
+      force_update:
+        description: 'Force update even if no changes'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  SCREENSHOT_WIDTH: '1920'
+  SCREENSHOT_HEIGHT: '1080'
+  BADGE_STYLE: 'for-the-badge'
+  BADGE_COLOR: 'brightgreen'
+  LIKES_COLOR: 'red'
+
+jobs:
+  update-readme-and-visitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable jq
+
+      - name: Install Node.js dependencies
+        run: |
+          if [ -f "package.json" ]; then
+            npm ci
+          else
+            echo '{"name": "screenshot-generator", "version": "1.0.0", "dependencies": {"puppeteer": "^21.0.0"}}' > package.json
+            npm install
+          fi
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+
+      - name: Manage likes system
+        run: |
+          # Initialize or load likes data
+          if [ ! -f "likes-data.json" ]; then
+            echo '{"total_likes":0,"unique_users":[],"created_at":"","last_updated":""}' > likes-data.json
+          fi
+
+          CURRENT_LIKES=$(jq -r '.total_likes' likes-data.json)
+          CURRENT_USERS=$(jq -r '.unique_users[]' likes-data.json)
+
+          # Handle like request
+          if [ "${{ github.event.inputs.add_like }}" = "true" ]; then
+            USER="${{ github.actor }}"
+            if echo "$CURRENT_USERS" | grep -q "$USER"; then
+              echo "LIKE_STATUS=already_liked" >> $GITHUB_ENV
+              echo "⚠️ $USER already liked this project!"
+            else
+              jq --arg user "$USER" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                '.total_likes += 1 | .unique_users += [$user] | .last_updated = $date | if .created_at == "" then .created_at = $date else . end' \
+                likes-data.json > tmp.json && mv tmp.json likes-data.json
+              echo "LIKE_STATUS=added" >> $GITHUB_ENV
+              echo "💖 New like from $USER!"
+            fi
+          fi
+
+          # Update likes badge
+          CURRENT_LIKES=$(jq -r '.total_likes' likes-data.json)
+          echo "{\"schemaVersion\":1,\"label\":\"❤️ likes\",\"message\":\"$CURRENT_LIKES\",\"color\":\"$LIKES_COLOR\",\"style\":\"$BADGE_STYLE\"}" > likes-count.json
+
+      - name: Update visitor count
+        run: |
+          # Initialize or load visitor data
+          if [ ! -f "visitor-data.json" ]; then
+            echo '{"unique_visitors":1,"last_updated":"","fallback_mode":true}' > visitor-data.json
+          fi
+
+          # Increment if manual run by user
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.actor }}" != "github-actions[bot]" ]; then
+            CURRENT=$(jq -r '.unique_visitors' visitor-data.json)
+            NEW=$((CURRENT + 1))
+            jq --arg count "$NEW" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              '.unique_visitors = ($count | tonumber) | .last_updated = $date' \
+              visitor-data.json > tmp.json && mv tmp.json visitor-data.json
+          fi
+
+          CURRENT_VISITORS=$(jq -r '.unique_visitors' visitor-data.json)
+          echo "{\"schemaVersion\":1,\"label\":\"👀 views\",\"message\":\"$CURRENT_VISITORS\",\"color\":\"$BADGE_COLOR\",\"style\":\"$BADGE_STYLE\"}" > visitor-count.json
+
+      - name: Create screenshot script if not exists
+        run: |
+          if [ ! -f "screenshot.js" ] && [ ! -f "scripts/screenshot.js" ]; then
+            mkdir -p scripts
+            cat > scripts/screenshot.js << 'EOF'
+          const puppeteer = require('puppeteer');
+          const fs = require('fs');
+          const path = require('path');
+
+          async function takeScreenshot() {
+            const browser = await puppeteer.launch({
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+              executablePath: '/usr/bin/google-chrome'
+            });
+            
+            const page = await browser.newPage();
+            
+            const githubPages = `https://${process.env.GITHUB_REPOSITORY_OWNER}.github.io/${process.env.GITHUB_REPOSITORY_NAME}/`;
+            const indexPath = path.join(process.cwd(), 'index.html');
+            
+            let targetUrl;
+            if (fs.existsSync(indexPath)) {
+              targetUrl = `file://${indexPath}`;
+            } else {
+              targetUrl = githubPages;
+              console.log(`📡 Using GitHub Pages URL: ${targetUrl}`);
+            }
+            
+            try {
+              await page.setViewport({
+                width: parseInt(process.env.SCREENSHOT_WIDTH) || 1920,
+                height: parseInt(process.env.SCREENSHOT_HEIGHT) || 1080
+              });
+              
+              await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+              
+              const selector = process.env.SCREENSHOT_SELECTOR || 'body';
+              await page.waitForSelector(selector, { timeout: 10000 });
+              
+              await page.screenshot({
+                path: 'screenshot.png',
+                fullPage: true,
+                type: 'png'
+              });
+              
+              console.log('✅ Screenshot created successfully');
+            } catch (error) {
+              console.error('❌ Screenshot failed:', error.message);
+              // Create fallback
+              const canvas = require('canvas').createCanvas(800, 600);
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#f0f0f0';
+              ctx.fillRect(0, 0, 800, 600);
+              ctx.fillStyle = '#333';
+              ctx.font = '24px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText('Screenshot not available', 400, 300);
+              
+              const buffer = canvas.toBuffer('image/png');
+              fs.writeFileSync('screenshot.png', buffer);
+            }
+            
+            await browser.close();
+          }
+
+          takeScreenshot().catch(console.error);
+          EOF
+          fi
+
+      - name: Generate screenshot
+        run: |
+          if [ -f "package.json" ] && npm run | grep -q "screenshot"; then
+            npm run screenshot
+          else
+            node scripts/screenshot.js
+          fi
+        env:
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+          SCREENSHOT_SELECTOR: ${{ github.event.inputs.screenshot_selector }}
+
+      - name: Update README
+        run: |
+          REPO_URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}"
+          LIKES=$(jq -r '.total_likes' likes-data.json)
+          VIEWS=$(jq -r '.unique_visitors' visitor-data.json)
+
+          # Get workflow file name
+          WORKFLOW_REF="${{ github.workflow_ref }}"
+          WORKFLOW_FILE="${WORKFLOW_REF##*/workflows/}"
+          WORKFLOW_FILE="${WORKFLOW_FILE%@*}"
+
+          # Create like button
+          cat > like-button.md << EOF
+          [![❤️ Like this project?](https://img.shields.io/badge/dynamic/json?url=${REPO_URL}/likes-count.json&query=%24.message&label=%F0%9F%92%96%20Likes&style=$BADGE_STYLE&color=$LIKES_COLOR)](https://github.com/${{ github.repository }}/actions/workflows/${WORKFLOW_FILE})
+          EOF
+
+          # Check if stats section exists in README
+          if [ -f "README.md" ] && grep -q "## 📊 Stats" README.md; then
+            # Stats section exists - preserve existing content
+            {
+              echo "# ${{ github.event.repository.name }}"
+              echo ""
+              echo "[![👀 Views](https://img.shields.io/endpoint?url=${REPO_URL}/visitor-count.json)](https://github.com/${{ github.repository }}/graphs/traffic)"
+              cat like-button.md
+              echo ""
+              echo "## 📸 Screenshot"
+              echo "![Screenshot](screenshot.png)"
+              echo ""
+              # Preserve existing content
+              cat README.md | awk '/^## 📊 Stats/{exit} {print}'
+            } > README_new.md
+          else
+            # Stats section doesn't exist - generate new content
+            {
+              echo "# ${{ github.event.repository.name }}"
+              echo ""
+              echo "[![👀 Views](https://img.shields.io/endpoint?url=${REPO_URL}/visitor-count.json)](https://github.com/${{ github.repository }}/graphs/traffic)"
+              cat like-button.md
+              echo ""
+              echo "## 📸 Screenshot"
+              echo "![Screenshot](screenshot.png)"
+              echo ""
+              if [ -f "README_template.md" ]; then
+                cat README_template.md
+              fi
+            } > README_new.md
+          fi
+
+          mv README_new.md README.md
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Changes detected"
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.changed == 'true' || github.event.inputs.force_update == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase --autostash origin ${{ github.ref_name }} || true
+          git add .
+
+          COMMIT_MSG="📸 Update README, screenshot and badges"
+          if [ "$LIKE_STATUS" = "added" ]; then
+            COMMIT_MSG="$COMMIT_MSG + new like!"
+          fi
+
+          git commit -m "$COMMIT_MSG" || {
+            echo "⚠️ No changes to commit or commit failed"
+            exit 0
+          }
+
+          git push origin ${{ github.ref_name }}
+
+      - name: Display results
+        if: always()
+        run: |
+          echo "📊 Workflow Summary:"
+          echo "=================="
+          echo "📸 Screenshot: $(ls -lh screenshot.png 2>/dev/null || echo 'not available')"
+          echo "❤️ Likes: $(jq -r '.total_likes' likes-data.json 2>/dev/null || echo '0')"
+          echo "👀 Views: $(jq -r '.unique_visitors' visitor-data.json 2>/dev/null || echo '0')"
+          echo "🌿 Branch: ${{ github.ref_name }}"
+          echo "📝 Repository: ${{ github.repository }}"
+          echo "🔄 Workflow File: $WORKFLOW_FILE"

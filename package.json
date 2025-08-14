@@ -1,0 +1,11 @@
+{
+  "name": "goit-markup-hw-02",
+  "version": "1.0.0",
+  "license": "ISC",
+  "scripts": {
+    "screenshot": "node generate-screenshot.js"
+  },
+  "dependencies": {
+    "puppeteer": "24.16.1"
+  }
+}
