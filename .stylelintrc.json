@@ -1,28 +1,30 @@
 {
   "extends": [
     "stylelint-config-standard",
-    "stylelint-prettier/recommended",
+    "@stylistic/stylelint-config",
     "stylelint-config-clean-order"
   ],
   "rules": {
     "no-duplicate-selectors": true,
-    "declaration-block-no-duplicate-properties": [
-      true,
+    "declaration-block-no-duplicate-properties": true,
+    "@stylistic/max-line-length": [
+      120,
       {
-        "ignore": ["consecutive-duplicates"]
+        "ignore": ["comments"]
       }
     ],
     "block-no-empty": true,
-    "font-family-name-quotes": "always-unless-keyword",
-    "selector-class-pattern": "^[a-z][a-zA-Z0-9]*(-[a-zA-Z0-9]+)*$",
-    "color-named": "never",
-    "length-zero-no-unit": true,
 
+    "selector-class-pattern": "^[a-z]([a-z0-9-]+)?(__[a-z0-9]+)?(--[a-z0-9]+)?$",
+    "selector-id-pattern": "^[a-z]([a-z0-9-]+)?$",
+    "custom-property-pattern": "^--[a-z][a-z0-9-]*$",
+
+    "property-no-unknown": true,
+    "unit-allowed-list": ["em", "rem", "%", "s", "px", "deg", "vh", "vw"],
     "no-descending-specificity": true,
     "max-nesting-depth": 3,
     "number-max-precision": 4,
     "at-rule-no-vendor-prefix": true,
-    "media-feature-name-no-vendor-prefix": true,
     "media-feature-name-no-unknown": true,
 
     "order/order": [
@@ -145,4 +147,3 @@
     ]
   }
 }
-

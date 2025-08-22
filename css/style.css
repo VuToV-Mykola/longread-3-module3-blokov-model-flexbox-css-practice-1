@@ -2,19 +2,6 @@
 
 /* Спочатку типографіка(+ :active, :hover, :focus): color, background-color, font-family, font-size, line-height, font-weight, font-style, text: text-decoration, text-transform, text-align, letter-spacing, text-indent (абзац), text-shadow: <зміщення по x>, <зміщення по y>, <радіус розмиття>, <колір>,    */
 
-a {
-  text-decoration: none;
-}
-
-ul,
-ol {
-  list-style-type: none;
-}
-
-address {
-  font-style: normal;
-}
-
 /* line-height: 1.5;-Використання множника гарантує рівномірне масштабування інтервалу між рядками при зміні розміру тексту. */
 
 /* Глобальні стилі документа */
@@ -39,4 +26,284 @@ body {
   background-color: var(--color-white);
 } */
 
+/* Якщо вам важко запам’ятати, де використовувати падінг, а де маржин, під час верстки задавайте всім елементам колір фону, адже він поширюється тільки на вміст, падінг і рамку, але не на маржини. Так буде візуально зрозуміло. Після того, як верстка виконана, видаліть із CSS-правил допоміжні властивості кольору фона. */
+
+/*  Не використовувати верхній марджин!
+div {
+  margin-bottom: 20px;
+} */
+
+/*  Відцентрувати елемент!
+div {
+  margin: 0 auto;
+} */
+
+/* У CSS створюється клас, зазвичай container, який можна задати будь-якому елементу, але на практиці це найчастіше буде тег <div> . Контейнеру обов'язково задаються
+ширина за макетом
+автоматичні горизонтальні маржини та
+необов'язкові горизонтальні падінги, також згідно макету.
+
+.container {
+  width: 480px;
+  margin: 0 auto;
+  padding: 0 15px;
+} */
+
+/* img {
+	display: block;
+  max-width: 100%;
+} */
+
+/* .thumb {
+  height: 400px;
+  width: 300px;
+} */
+
+/* .thumb img {
+  height: 100%;
+  width: 100%;
+	object-fit: cover;
+} */
+
+/* .card-set {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+} */
+
+/* 100% - кількість_проміжків_у_рядку * значення_одного_проміжку) / кількість_елементів_у_рядку */
+
+/* .item {
+  width: calc((100% - 20px) / 3);
+} */
+
+/* .page-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+} */
+
+/* !! + !! */
+
+/* main {
+  flex-grow: 1;
+} */
+
+/* Для елементів списків */
+
+/* .list-item:not(:last-child) {
+  margin-bottom: 20px;
+} */
+
 /* !!! logo !!! */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Poppins, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #212121;
+  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+}
+
+main {
+  flex-grow: 1;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: Oswald, sans-serif;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  object-fit: cover;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.page-header {
+  background-color: #e0e0e0;
+  margin-bottom: 20px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.page-header .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.page-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.page-nav .link {
+  font-size: 14px;
+  text-decoration: none;
+  text-transform: uppercase;
+  color: #03a9f4;
+  display: block;
+  padding: 4px 8px;
+}
+
+.downloads .link {
+  text-decoration: none;
+  color: #03a9f4;
+}
+
+.club-list .link {
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  color: #03a9f4;
+}
+
+.page-nav .link:hover,
+.page-nav .link:focus {
+  color: #0288d1;
+}
+
+.page-nav .link:active {
+  color: #f44336;
+}
+
+.page-title {
+  font-size: 32px;
+  line-height: 1.333;
+  letter-spacing: 3px;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.section {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 2px dashed #212121;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.333;
+  letter-spacing: 1px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.club-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.club-list .item {
+  flex-basis: calc((100% - 24px) / 3);
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.club-list .title {
+  font-size: 16px;
+  line-height: 1.333;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.club-list .link:hover,
+.club-list .link:focus {
+  color: #0288d1;
+}
+
+.club-list .link:active {
+  color: #f44336;
+}
+
+.downloads .link:hover,
+.downloads .link:focus {
+  text-decoration: underline;
+  color: #0288d1;
+}
+
+.downloads .link:active {
+  color: #f44336;
+}
+
+.benefits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.benefits .item {
+  flex-basis: calc((100% - 32px) / 3);
+}
+
+.downloads {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.downloads .item:not(:last-child) {
+  margin-bottom: 8px;
+}
+
+.page-footer {
+  background-color: #212121;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.page-footer .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.copyright-text {
+  color: #fff;
+  flex-basis: 300px;
+}
+
+.social-links {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-self: flex-end;
+}
